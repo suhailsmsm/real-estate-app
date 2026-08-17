@@ -1,0 +1,29 @@
+{
+    "python.testing.pytestArgs": [
+        "elt"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "pgsql.connections": [
+        {
+            "id": "BBCB15B5-B888-41DD-B5D0-5D051BD97686",
+            "groupId": "A720E75B-CD42-48D6-B20A-18BAB7C64AE7",
+            "authenticationType": "SqlLogin",
+            "connectTimeout": 15,
+            "applicationName": "vscode-pgsql",
+            "clientEncoding": "utf8",
+            "sslmode": "prefer",
+            "sshSavePassword": true,
+            "savePassword": true,
+            "sslRootCertMode": "none",
+            "server": "localhost",
+            "port": "5432",
+            "user": "dxb",
+            "password": "",
+            "database": "dxb",
+            "profileName": "dxb",
+            "expiresOn": 0,
+            "sshPassword": ""
+        }
+    ]
+}

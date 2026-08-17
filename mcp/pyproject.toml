@@ -1,0 +1,62 @@
+[project]
+name = "dxb-mcp"
+version = "0.1.0"
+description = "MCP server exposing the Dubai real estate analytics to any MCP-capable agent"
+requires-python = ">=3.12"
+dependencies = [
+    # PINNED EXACTLY, not a range. 2.0.0 landed 2026-07-28 tracking a spec that
+    # is still a release candidate; the maintainers' own advice is that stable
+    # v1 remains the safe choice for critical workloads. We took v2 knowingly
+    # (docs/MCP_DESIGN.md §3), and the price of that is that an SDK bump must be
+    # a deliberate, tested change rather than something a lockfile refresh does
+    # to us. Re-verify the bindings in §3 whenever this number moves.
+    "mcp==2.0.0",
+    "httpx>=0.27",
+    "uvicorn[standard]>=0.32",
+]
+
+# Deliberately NOT depending on dxb-core or dxb-api. This service owns no SQL
+# and no schema — it is an HTTP client of the REST API and nothing else
+# (docs/MCP_DESIGN.md §2). A dependency here would be the first step toward it
+# growing its own database access and duplicating the API's guardrails.
+
+[project.optional-dependencies]
+# mirrors [dependency-groups.dev]; pip (Dockerfile) reads extras, not PEP 735
+# groups, while `uv sync` reads the groups natively. Keep the two in sync.
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.15.22",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dxb_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+lint.select = ["E", "I", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# Layering enforcement (docs/MCP_DESIGN.md §2): this package must stay a thin
+# HTTP client. Reaching for SQLAlchemy or the shared schema here would mean it
+# had started answering questions itself, duplicating the guardrails the REST
+# API already enforces.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sqlalchemy".msg = "The MCP server owns no SQL — it calls the REST API (MCP_DESIGN.md §2)."
+"dxb_core".msg = "The MCP server owns no schema — it calls the REST API (MCP_DESIGN.md §2)."
+"dxb_api".msg = "Call the REST API over HTTP, do not import it (MCP_DESIGN.md §2)."

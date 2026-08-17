@@ -1,0 +1,26 @@
+.env
+.local/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# Root-anchored on purpose: an unanchored `db/` also matched
+# elt/src/dxb/db/, silently keeping the entire schema out of git.
+/db/
+/data/
+
+# Desktop build: the snapshot is a release asset (data-snapshot-*), not a
+# repo file; node_modules and PyInstaller output never belong in git.
+desktop/data/
+desktop/.venv/
+desktop/src/*.egg-info/
+.ruff_cache/
+dist/
+build/
+ui/node_modules/
+ui/dist/
+
+# TLS material for the nginx edge. The dev certificate is self-signed and
+# regenerable (see nginx/README.md); a private key must never be committed,
+# and a real one least of all.
+nginx/certs/

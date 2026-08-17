@@ -1,0 +1,127 @@
+/* Dashboard-only styles. Everything reusable lives in ui/theme.css already;
+   this is just the handful of shapes unique to this view (chips, the entity
+   search dropdown, summary cards). */
+
+.entity-picker {
+  position: relative;
+  max-width: 360px;
+}
+
+.entity-picker input {
+  width: 100%;
+}
+
+.entity-picker-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+
+.entity-picker-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: var(--ink);
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.entity-picker-row:hover {
+  background: var(--sunk);
+}
+
+div.entity-picker-row {
+  cursor: default;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--sunk);
+  border: 1px solid var(--edge-strong);
+  border-radius: 999px;
+  padding: 3px 6px 3px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.chip button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 50%;
+}
+
+.chip button:hover {
+  color: var(--bad);
+  background: var(--bad-bg);
+}
+
+.chip-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--sunk);
+  border: 1px solid var(--edge);
+  border-radius: var(--r);
+  padding: 10px 12px;
+}
+
+.summary-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-card-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-up {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.trend-down {
+  color: var(--bad);
+  font-weight: 600;
+}

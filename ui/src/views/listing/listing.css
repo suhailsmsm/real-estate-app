@@ -1,0 +1,92 @@
+/* Listing view — only what theme.css doesn't already provide. */
+
+.listing-view {
+  height: 100%;
+}
+
+.entity-chip {
+  min-height: 30px;
+}
+
+.combo {
+  position: relative;
+}
+
+.combo-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+
+.combo-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.combo-item:hover {
+  background: var(--sunk);
+}
+
+.combo-item.muted {
+  cursor: default;
+  color: var(--ink-soft);
+}
+
+.combo-item.muted:hover {
+  background: transparent;
+}
+
+.col-picker {
+  position: relative;
+}
+
+.col-picker > summary {
+  list-style: none;
+}
+
+.col-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.col-picker-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 10px;
+}
+
+.col-picker-item {
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.listing-pagination {
+  padding: 2px 2px 0;
+}

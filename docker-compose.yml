@@ -1,0 +1,206 @@
+services:
+  db:
+    # 17-3.5 has no linux/arm64 manifest (Apple Silicon) — 16-3.4 is the
+    # newest postgis tag with arm64 support available locally. Everything
+    # this stack uses (geography type, ST_Contains, ST_DWithin) is in 3.4.
+    image: postgis/postgis:16-3.4
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  elt:
+    # Root context so the build can reach packages/dxb-core (shared schema).
+    build:
+      context: .
+      dockerfile: elt/Dockerfile
+    env_file: .env
+    environment:
+      DXB_DB_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./elt/src:/app/src # dev: live code without rebuild
+      - ./data:/app/data:ro # one-off CSV import source files (see docs/CSV_DATA_ANALYSIS.md)
+    command: dxb run-scheduler
+
+  api:
+    # Root context so the build can reach packages/dxb-core (shared schema).
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file: .env
+    environment:
+      DXB_DB_HOST: db # later: the read replica host — one value changes
+      # nginx mounts this service at /api and strips the prefix before
+      # forwarding — see Settings.root_path (config.py) for why this needs to
+      # be told to FastAPI too, not just to nginx.
+      DXB_API_ROOT_PATH: /api
+    # Deliberately no depends_on: elt — the API serves reads whether or not
+    # the scheduler is running, and neither can block the other's startup.
+    depends_on:
+      db:
+        condition: service_healthy
+    # nginx is the only way in from the network (docs/MCP_DESIGN.md §8).
+    # Reach it directly for debugging with `docker compose exec api ...`, or
+    # through the edge at https://localhost/api/.
+    expose:
+      - "8000"
+    # Loopback-only ("127.0.0.1:", not "0.0.0.0:"), same reasoning as the mcp
+    # binding below: reachable only from this machine, never the LAN. It exists
+    # so the Vite dev server can proxy to the API over plain HTTP without a
+    # TLS-trust dance against nginx's self-signed cert (docs/UI_PLAN.md).
+    # Auth is unchanged — the same JWT/API-key dependencies run on this port.
+    # Note the path shape differs from the edge: direct is /facts/..., through
+    # nginx it is /api/facts/... (nginx strips the prefix; DXB_API_ROOT_PATH
+    # above only tells FastAPI how to render its own URLs).
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./api/src:/app/src # dev: live code without rebuild (mirrors elt)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+
+  mcp:
+    # Root context so the build path convention matches elt/ and api/, even
+    # though this image deliberately does not install packages/dxb-core.
+    build:
+      context: .
+      dockerfile: mcp/Dockerfile
+    env_file: .env
+    environment:
+      # In-cluster hop: nginx terminates TLS at the edge, so this leg is plain
+      # HTTP on the compose network and never leaves it.
+      DXB_MCP_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    # The public path is nginx (TLS, rate-limited) — but nginx's cert is
+    # self-signed, which most MCP/HTTP clients refuse to trust without extra
+    # config. This second binding is loopback-only ("127.0.0.1:", not
+    # "0.0.0.0:") so it is reachable only from this machine, never the LAN,
+    # and exists purely so local tooling (e.g. `claude mcp add`) can reach the
+    # server over plain HTTP without a TLS-trust dance. It does NOT skip
+    # auth — DXB_MCP_CLIENT_API_KEYS is still enforced identically on this
+    # port (see mcp/security.py: the middleware wraps the whole ASGI app,
+    # not a per-transport branch).
+    ports:
+      - "127.0.0.1:8100:8100"
+    volumes:
+      - ./mcp/src:/app/src # dev: live code without rebuild (mirrors elt/api)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8100/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+
+  copilot:
+    # Root context so the build path convention matches the other services,
+    # even though this image deliberately does not install packages/dxb-core.
+    build:
+      context: .
+      dockerfile: copilot/Dockerfile
+    env_file: .env
+    environment:
+      # In-cluster hop to the MCP server — the copilot's ONLY route to data.
+      # It has no DB credentials by design (docs/UI_PLAN.md §5), which is what
+      # keeps "only the API touches the database" true with an LLM in the loop.
+      DXB_COPILOT_MCP_URL: http://mcp:8100/mcp
+      # nginx mounts this service at /copilot and strips the prefix before
+      # forwarding — see Settings.root_path for why this needs to be told to
+      # FastAPI too, not just to nginx (mirrors DXB_API_ROOT_PATH on api).
+      DXB_COPILOT_ROOT_PATH: /copilot
+      # Only read when DXB_COPILOT_PROVIDER=ollama (config.py). Docker
+      # Desktop resolves host.docker.internal without extra_hosts below, but
+      # the explicit mapping is the portable form for Linux Docker Engine —
+      # this repo has been bitten before by exactly this class of
+      # environment-specific Docker networking gap (see the wget/musl/
+      # localhost healthcheck story elsewhere in CLAUDE.md).
+      DXB_COPILOT_OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mcp:
+        condition: service_healthy
+    # No published port: nginx is the only way in, same as api.
+    expose:
+      - "8200"
+    volumes:
+      - ./copilot/src:/app/src # dev: live code without rebuild (mirrors elt/api/mcp)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8200/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+
+  ui:
+    # Root context so the build path convention matches every other service
+    # (see ui/Dockerfile for why root context is used even though this image
+    # needs nothing outside ui/ itself).
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    # No env_file: this is a static build with no server-side secrets. The API
+    # base path is a same-origin relative URL (`/api`, `/copilot`) that the
+    # edge nginx resolves — never a value baked into the bundle or read from
+    # this container's environment (docs/UI_PLAN.md §2).
+    expose:
+      - "8080"
+    healthcheck:
+      # 127.0.0.1, not localhost: this image's Alpine/musl base resolves
+      # "localhost" to ::1 (IPv6) first (confirmed: `getent hosts localhost`
+      # -> ::1 only), but nginx here only binds IPv4 (`listen 8080;` ==
+      # 0.0.0.0:8080) — so every check would fail with "connection refused"
+      # despite the server being up and reachable the whole time. Caught by
+      # actually watching the healthcheck fail live, not assumed.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      ui:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      mcp:
+        condition: service_healthy
+      copilot:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/proxy_headers.conf:/etc/nginx/proxy_headers.conf:ro
+      # Self-signed for local dev, gitignored, regenerated per the command in
+      # nginx/README.md. Swap in a real certificate for production — no config
+      # change is needed, only these two files.
+      - ./nginx/certs:/etc/nginx/certs:ro
+    healthcheck:
+      # 127.0.0.1, not localhost — the same bug just found and fixed on the ui
+      # service's healthcheck: this image's Alpine/musl base resolves
+      # "localhost" to ::1 first, nginx listens IPv4-only, and busybox wget
+      # (unlike curl) does not fall back to the next resolved address on
+      # ECONNREFUSED. This is why nginx has been reporting unhealthy all
+      # along despite serving traffic correctly the whole time — the healthy
+      # server just kept failing its own probe.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

@@ -1,0 +1,47 @@
+[project]
+name = "dxb-copilot"
+version = "0.1.0"
+description = "Dubai real estate analytics copilot — LLM agent over the MCP tool surface"
+requires-python = ">=3.12"
+dependencies = [
+    # PINNED EXACTLY, mirroring mcp/pyproject.toml's reasoning: v2 tracks a
+    # spec that is still a release candidate, so an SDK bump must be a
+    # deliberate, tested change rather than something a lockfile refresh does
+    # to us. Both services must move together — they speak to each other.
+    "mcp==2.0.0",
+    "anthropic>=0.40",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "httpx>=0.27",
+    "openai>=1.0",
+    "ollama>=0.4",
+    "jsonschema>=4.0",
+]
+
+# Deliberately NOT depending on dxb-core or dxb-api. This service owns no SQL
+# and holds no database credentials: it reaches data only through the MCP
+# server (docs/UI_PLAN.md §5), which is what keeps "the API is the only thing
+# that touches the database" true once an LLM is in the loop.
+
+[project.scripts]
+dxb-copilot = "dxb_copilot.__main__:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "anyio>=4.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "anyio>=4.0", "ruff>=0.15.22"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dxb_copilot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+lint.select = ["E", "I"]

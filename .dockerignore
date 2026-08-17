@@ -1,0 +1,21 @@
+# The build context is the repo root (both services need packages/dxb-core),
+# so keep the heavy, irrelevant, and secret paths out of it.
+.git
+.env
+data/
+docs/
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/uv.lock
+
+# ui/'s own build artifacts — node_modules especially: hundreds of MB that
+# would otherwise be sent to the Docker daemon on every build even though
+# ui/Dockerfile runs its own `npm ci` in a clean image. dist/ is rebuilt
+# inside the image too, never copied in from the host, so a stale local
+# build can't leak into what gets shipped.
+ui/node_modules
+ui/dist
+ui/coverage

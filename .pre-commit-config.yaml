@@ -1,0 +1,30 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (elt/)
+        # Uses elt/'s own uv-managed venv (pyproject.toml's dev dependency)
+        # instead of a pre-commit-managed ruff install, so there's a single
+        # source of truth for the ruff version.
+        entry: uv run --project elt ruff check elt
+        language: system
+        files: ^elt/
+        pass_filenames: false
+      - id: ruff-check-api
+        name: ruff check (api/)
+        # Separate hook, not a widened path: api/ carries its own TID251
+        # layering ban (only repositories/ may import SQLAlchemy), which only
+        # applies when ruff runs with api/pyproject.toml as the config root.
+        entry: uv run --project api ruff check api
+        language: system
+        files: ^api/
+        pass_filenames: false
+      - id: ruff-check-core
+        name: ruff check (packages/dxb-core/)
+        # The shared schema is a third config root. Linted through api's venv
+        # (ruff picks the config from the file's own directory regardless), so
+        # dxb-core keeps its deliberately minimal dependency set — no dev tools.
+        entry: uv run --project api ruff check packages/dxb-core
+        language: system
+        files: ^packages/dxb-core/
+        pass_filenames: false

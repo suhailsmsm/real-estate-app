@@ -1,0 +1,66 @@
+[project]
+name = "dxb-api"
+version = "0.1.0"
+description = "Dubai real estate analytics — read-only FastAPI service over the star schema"
+requires-python = ">=3.12"
+dependencies = [
+    "dxb-core",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "sqlalchemy>=2.0.36",
+    "psycopg[binary]>=3.2",
+    "geoalchemy2>=0.15",
+    "argon2-cffi>=23.1",
+    "pyjwt[crypto]>=2.9",
+    "anyio>=4.4",
+]
+
+[tool.uv.sources]
+dxb-core = { path = "../packages/dxb-core", editable = true }
+
+[project.optional-dependencies]
+# mirrors [dependency-groups.dev]; pip (Dockerfile) reads extras, not PEP 735
+# groups, while `uv sync` reads the groups natively. Keep the two in sync.
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.15.22",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dxb_api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+lint.select = ["E", "I", "TID"]
+
+# Layering enforcement (docs/API_DESIGN.md §3): only repositories/ may touch
+# SQLAlchemy or the shared schema. Routers receive repository instances and
+# therefore cannot reach the database even by accident.
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sqlalchemy".msg = "Only repositories/ may touch SQLAlchemy (API_DESIGN.md §3)."
+"dxb_core.models".msg = "Only repositories/ may touch the shared schema (API_DESIGN.md §3)."
+"geoalchemy2".msg = "Only repositories/ may touch geo column types (API_DESIGN.md §3)."
+
+[tool.ruff.lint.per-file-ignores]
+"src/dxb_api/repositories/**" = ["TID251"]
+"tests/**" = ["TID251"]

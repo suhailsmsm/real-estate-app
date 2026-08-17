@@ -1,0 +1,129 @@
+name: Build Windows Desktop App
+
+# Builds Real EstateAppNew.exe (PyInstaller onedir, incl. the SQLite data
+# snapshot) and wraps it into an installer with Inno Setup, on a free
+# GitHub-hosted Windows runner.
+#
+# Data snapshot: the analytics database cannot be rebuilt on CI (it needs the
+# live DLD backfill), so the workflow downloads dxb.db from the latest release
+# tagged data-snapshot-*. If none exists yet it ships a schema-only db and the
+# app honestly reports zero coverage. Publish/refresh a snapshot:
+#   1. run desktop/export_sqlite.py against the running stack (see README)
+#   2. gh release create data-snapshot-v1 desktop/data/dxb.db
+# Re-tagging (data-snapshot-v2, v3, ...) makes the newer one "latest by tag
+# order" — the workflow sorts and picks the greatest.
+
+on:
+  workflow_dispatch:        # manual: Actions tab → Run workflow
+  push:
+    tags: ["v*"]            # auto on version tags like v1.0.0
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install packages/dxb-core api mcp copilot
+          pip install -r desktop/requirements-build.txt
+          pip install -e desktop --no-deps
+
+      - name: Run desktop tests
+        run: python -m pytest desktop/tests -q
+        env:
+          PYTHONPATH: desktop/src
+
+      - name: Build the SPA
+        run: |
+          cd ui
+          npm install
+          npm run typecheck
+          npm run build
+
+      - name: Fetch data snapshot (or build schema-only)
+        shell: pwsh
+        run: |
+          $snap = gh release list --repo $env:GITHUB_REPOSITORY --limit 50 |
+                 Select-String 'data-snapshot-' |
+                 ForEach-Object { ($_ -split '\s+')[0] } |
+                 Sort-Object -Culture en-US |
+                 Select-Object -Last 1
+          if ($snap) {
+            Write-Host "Downloading snapshot from release $snap"
+            gh release download $snap --repo $env:GITHUB_REPOSITORY --pattern dxb.db --output-dir snapshot
+            New-Item -Force desktop/data | Out-Null
+            Move-Item -Force snapshot/dxb.db desktop/data/dxb.db
+            $mb = [math]::Round((Get-Item desktop/data/dxb.db).Length / 1MB, 1)
+            Write-Host "Snapshot size: $mb MB"
+          } else {
+            Write-Host "No data-snapshot release found — shipping schema-only db"
+            python desktop/src/dxb_desktop/make_db.py desktop/data/dxb.db
+          }
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Build app icon from the SPA favicon
+        shell: pwsh
+        continue-on-error: true   # icon is cosmetic; never block the build
+        run: |
+          pip install pillow cairosvg
+          python -c @'
+          import cairosvg
+          from PIL import Image
+          from pathlib import Path
+          cairosvg.svg2png(url='ui/public/favicon.svg', write_to='desktop/icon-256.png', output_width=256, output_height=256)
+          img = Image.open('desktop/icon-256.png')
+          img.save('desktop/app.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          Path('desktop/app.ico').exists() and print('icon OK')
+          '@
+
+      - name: Build exe with PyInstaller
+        run: pyinstaller desktop/real_estate_app.spec --noconfirm --log-level WARN
+
+      - name: Copy data snapshot into the dist tree
+        shell: pwsh
+        run: |
+          New-Item -Force dist/RealEstateAppNew/data | Out-Null
+          Copy-Item desktop/data/dxb.db dist/RealEstateAppNew/data/dxb.db
+          $size = (Get-Item dist/RealEstateAppNew -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          Write-Host "App dir size: $([math]::Round($size,1)) MB"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc desktop/installer.iss /Q
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RealEstateAppNew-installer
+          path: dist/installer/RealEstateAppNew-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Create Release (on tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/installer/RealEstateAppNew-Setup-*.exe
+          draft: true

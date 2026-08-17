@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Settings — Real Estate App New</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0b0f14; color: #e6edf3;
+  }
+  .panel {
+    width: 100%; max-width: 520px; margin: 24px; padding: 24px;
+    background: #11161d; border: 1px solid #212b36; border-radius: 12px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: #8b98a5; font-size: 14px; }
+  label { display: block; margin: 14px 0 6px; font-size: 14px; color: #c9d4de; }
+  input {
+    width: 100%; padding: 10px 12px; font-size: 15px; color: #e6edf3;
+    background: #0b0f14; border: 1px solid #2a3644; border-radius: 8px;
+  }
+  input:focus { outline: 1px solid #3b82f6; }
+  .row { display: flex; gap: 10px; margin-top: 20px; }
+  button {
+    flex: 1; padding: 10px 14px; font-size: 15px; cursor: pointer;
+    border: 1px solid #2a3644; border-radius: 8px; background: #1a2330; color: #e6edf3;
+  }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button:disabled { opacity: .6; cursor: default; }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .presets button { flex: none; font-size: 13px; padding: 6px 10px; }
+  #status { margin-top: 14px; font-size: 14px; min-height: 22px; white-space: pre-wrap; }
+  #status.ok { color: #4ade80; } #status.err { color: #f87171; } #status.info { color: #8b98a5; }
+  .note { margin-top: 16px; font-size: 13px; color: #8b98a5; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Copilot model settings</h1>
+    <p class="sub">The chat assistant answers through an OpenAI-compatible endpoint you control. The key is stored only on this machine.</p>
+
+    <label for="base_url">Base URL (OpenAI-compatible)</label>
+    <input id="base_url" placeholder="https://api.openai.com/v1" />
+    <div class="presets">
+      <button type="button" data-url="https://api.openai.com/v1" data-model="gpt-4.1">OpenAI</button>
+      <button type="button" data-url="https://api.deepseek.com/v1" data-model="deepseek-chat">DeepSeek</button>
+      <button type="button" data-url="http://127.0.0.1:8317/v1" data-model="gpt-5.6-terra">Local proxy</button>
+      <button type="button" data-url="http://127.0.0.1:11434/v1" data-model="qwen2.5">Ollama</button>
+    </div>
+
+    <label for="model">Model</label>
+    <input id="model" placeholder="gpt-4.1" />
+
+    <label for="api_key">API key</label>
+    <input id="api_key" type="password" placeholder="sk-..." />
+
+    <div class="row">
+      <button id="test" type="button">Test</button>
+      <button id="save" class="primary" type="button">Save</button>
+    </div>
+    <div id="status" class="info"></div>
+    <div class="note" id="meta"></div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const status = (msg, cls) => { $("status").textContent = msg; $("status").className = cls; };
+
+function current() {
+  return {
+    base_url: $("base_url").value.trim(),
+    model: $("model").value.trim(),
+    api_key: $("api_key").value.trim(),
+    notes: "",
+  };
+}
+
+async function load() {
+  try {
+    const s = await (await fetch("/desktop/settings")).json();
+    $("base_url").value = s.base_url || "";
+    $("model").value = s.model || "";
+    $("api_key").placeholder = s.api_key_masked ? s.api_key_masked : "sk-...";
+    $("meta").textContent = "Saved at " + s.settings_path;
+  } catch (e) { status("Could not load settings: " + e, "err"); }
+}
+
+document.querySelectorAll(".presets button").forEach((b) =>
+  b.addEventListener("click", () => {
+    $("base_url").value = b.dataset.url;
+    $("model").value = b.dataset.model;
+  })
+);
+
+$("test").addEventListener("click", async () => {
+  status("Testing…", "info");
+  try {
+    const res = await fetch("/desktop/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(current()),
+    });
+    const out = await res.json();
+    if (out.ok) status("OK — endpoint reachable, key and model accepted.", "ok");
+    else status("Failed (HTTP " + out.status + "): " + (out.error || "unknown"), "err");
+  } catch (e) { status("Test request failed: " + e, "err"); }
+});
+
+$("save").addEventListener("click", async () => {
+  status("Saving…", "info");
+  try {
+    const res = await fetch("/desktop/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // An empty api_key keeps the stored key (the GET never returns it).
+      body: JSON.stringify(current()),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const s = await res.json();
+    $("api_key").placeholder = s.api_key_masked || "sk-...";
+    $("api_key").value = "";
+    $("meta").textContent = "Saved at " + s.settings_path;
+    status(s.configured ? "Saved — copilot is ready." : "Saved, but no API key set: chat will explain what's missing.", s.configured ? "ok" : "err");
+  } catch (e) { status("Save failed: " + e, "err"); }
+});
+
+load();
+</script>
+</body>
+</html>
