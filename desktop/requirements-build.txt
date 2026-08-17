@@ -1,9 +1,18 @@
 # Build-time requirements for the Windows desktop app (GitHub Actions).
-# The runtime dependencies come from desktop/pyproject.toml; install this file
-# AFTER `pip install ../packages/dxb-core ../api ../mcp ../copilot -e ../desktop`
-# (pip does not accept relative path lines inside a requirements file portably).
+# The four sibling packages (dxb-core/dxb-api/dxb-mcp/dxb-copilot) are
+# installed separately in the workflow (dxb-core FIRST — see the workflow's
+# Install step); desktop itself is installed with --no-deps because its
+# sibling deps are not on PyPI. This file carries everything else:
+#   - PyInstaller + test tooling
+#   - desktop-only runtime deps the service packages do not pull in
+#     (aiosqlite/greenlet for the SQLite engine; pywebview for the window)
 pyinstaller>=6.0
 pytest>=8.0
 pytest-asyncio>=0.23
 httpx>=0.27
 ruff>=0.5
+asgi-lifespan>=2.1
+aiosqlite>=0.20
+greenlet>=3.0
+pywebview>=5.0
+pythonnet>=3.0

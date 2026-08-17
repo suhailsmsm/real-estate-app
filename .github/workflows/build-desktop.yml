@@ -39,9 +39,15 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install packages/dxb-core api mcp copilot
-          pip install -r desktop/requirements-build.txt
+          # Order matters: dxb-api declares a dxb-core dependency resolved via
+          # uv's [tool.uv.sources] path (plain pip ignores it), so install the
+          # shared schema package FIRST so its name is already satisfied.
+          pip install -e packages/dxb-core
+          pip install -e api
+          pip install -e mcp
+          pip install -e copilot
           pip install -e desktop --no-deps
+          pip install -r desktop/requirements-build.txt
 
       - name: Run desktop tests
         run: python -m pytest desktop/tests -q
