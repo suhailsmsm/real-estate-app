@@ -89,15 +89,18 @@ jobs:
         shell: pwsh
         continue-on-error: true   # icon is cosmetic; never block the build
         run: |
-          pip install pillow cairosvg
+          # Pillow only — cairosvg needs a native cairo dll that is not
+          # reliably present on Windows runners. Draw the brand skyline.
+          pip install pillow
           python -c @'
-          import cairosvg
-          from PIL import Image
-          from pathlib import Path
-          cairosvg.svg2png(url='ui/public/favicon.svg', write_to='desktop/icon-256.png', output_width=256, output_height=256)
-          img = Image.open('desktop/icon-256.png')
-          img.save('desktop/app.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
-          Path('desktop/app.ico').exists() and print('icon OK')
+          from PIL import Image, ImageDraw
+          img = Image.new("RGB", (256, 256), (15, 23, 42))
+          d = ImageDraw.Draw(img)
+          bars = [(40,140,60,216),(70,96,90,216),(100,120,120,216),(130,64,150,216),(160,120,180,216),(190,88,210,216)]
+          for b in bars:
+              d.rectangle(b, fill=(212,175,55))
+          img.save("desktop/app.ico", format="ICO", sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+          print("icon OK")
           '@
 
       - name: Build exe with PyInstaller
