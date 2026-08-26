@@ -111,7 +111,8 @@ jobs:
           # below then fails with "Could not find a part of the path".
           New-Item -ItemType Directory -Force dist/RealEstateAppNew/data | Out-Null
           Copy-Item desktop/data/dxb.db dist/RealEstateAppNew/data/dxb.db
-          $size = (Get-Item dist/RealEstateAppNew -Recurse | Measure-Object Length -Sum).Sum / 1MB
+          # Get-ChildItem, not Get-Item — only Get-ChildItem has -Recurse.
+          $size = (Get-ChildItem dist/RealEstateAppNew -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
           Write-Host "App dir size: $([math]::Round($size,1)) MB"
 
       - name: Install Inno Setup
