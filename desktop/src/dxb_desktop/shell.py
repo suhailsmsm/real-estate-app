@@ -295,6 +295,39 @@ def build_shell(
         except httpx.HTTPError as exc:
             return {"ok": False, "status": 0, "error": str(exc)}
 
+    @app.post("/desktop/models")
+    async def _list_models(body: _SettingsBody) -> dict[str, Any]:
+        """The provider's real model list via GET {base_url}/models, so the
+        UI's model dropdown matches whatever key/provider the user has."""
+        import httpx
+
+        url = body.base_url.strip().rstrip("/") + "/models"
+        key = body.api_key.strip() or settings_store.load().api_key
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.get(
+                    url, headers={"Authorization": f"Bearer {key}"}
+                )
+            if res.status_code == 200:
+                data = res.json()
+                items = data.get("data") if isinstance(data, dict) else data
+                ids = sorted(
+                    str(m.get("id") or m.get("name") or "")
+                    for m in (items or [])
+                    if isinstance(m, dict)
+                )
+                return {"ok": True, "models": [i for i in ids if i]}
+            if res.status_code in (401, 403):
+                return {
+                    "ok": False,
+                    "status": res.status_code,
+                    "error": "Authentication failed — the API key is invalid "
+                    "or belongs to a different provider than this Base URL.",
+                }
+            return {"ok": False, "status": res.status_code, "error": res.text[:300]}
+        except httpx.HTTPError as exc:
+            return {"ok": False, "status": 0, "error": str(exc)}
+
     # --- static: settings page first, then the SPA (html=True catch-all).
     settings_html = ui_dir / "desktop-settings.html"
     if settings_html.exists():

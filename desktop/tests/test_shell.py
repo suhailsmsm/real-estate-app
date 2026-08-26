@@ -208,3 +208,67 @@ async def test_desktop_settings_roundtrip(client, tmp_path, monkeypatch):
     got = await client.get("/desktop/settings")
     assert got.json()["model"] == "test-model"
     assert "api_key" not in got.json()
+
+
+def _patch_httpx(monkeypatch, handler):
+    """Route every AsyncClient the shell creates to a MockTransport."""
+    import httpx
+
+    transport = httpx.MockTransport(handler)
+
+    class _Patched(httpx.AsyncClient):
+        def __init__(self, **kw):
+            kw["transport"] = transport
+            super().__init__(**kw)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Patched)
+
+
+async def test_desktop_models_lists_provider_models(client, monkeypatch):
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/models"
+        assert request.headers["Authorization"] == "Bearer sk-live"
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "deepseek-reasoner"}, {"id": "deepseek-chat"}]},
+        )
+
+    _patch_httpx(monkeypatch, handler)
+    res = await client.post(
+        "/desktop/models",
+        json={
+            "base_url": "http://provider/v1",
+            "api_key": "sk-live",
+            "model": "",
+            "notes": "",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ok"] is True
+    # sorted, and derived from what the provider actually serves
+    assert body["models"] == ["deepseek-chat", "deepseek-reasoner"]
+
+
+async def test_desktop_models_auth_failure_is_actionable(client, monkeypatch):
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": {"message": "Authentication Fails"}})
+
+    _patch_httpx(monkeypatch, handler)
+    res = await client.post(
+        "/desktop/models",
+        json={
+            "base_url": "http://provider/v1",
+            "api_key": "sk-wrong",
+            "model": "",
+            "notes": "",
+        },
+    )
+    body = res.json()
+    assert body["ok"] is False
+    assert body["status"] == 401
+    assert "different provider" in body["error"]
