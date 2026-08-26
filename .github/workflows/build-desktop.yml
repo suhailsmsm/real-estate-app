@@ -64,15 +64,17 @@ jobs:
       - name: Fetch data snapshot (or build schema-only)
         shell: pwsh
         run: |
-          $snap = gh release list --repo $env:GITHUB_REPOSITORY --limit 50 |
-                 Select-String 'data-snapshot-' |
-                 ForEach-Object { ($_ -split '\s+')[0] } |
-                 Sort-Object -Culture en-US |
-                 Select-Object -Last 1
+          # Use --json (not tabular text): the release TITLE is "Data snapshot
+          # v1 ..." which would otherwise be mis-parsed as the tag. Only tags
+          # matching data-snapshot-* are data releases.
+          $snap = gh release list --repo $env:GITHUB_REPOSITORY --limit 50 --json tagName --jq '.[].tagName' |
+                  Where-Object { $_ -like 'data-snapshot-*' } |
+                  Sort-Object -Culture en-US |
+                  Select-Object -Last 1
           if ($snap) {
             Write-Host "Downloading snapshot from release $snap"
-            gh release download $snap --repo $env:GITHUB_REPOSITORY --pattern dxb.db --output-dir snapshot
-            New-Item -Force desktop/data | Out-Null
+            New-Item -Force desktop/data, snapshot -ItemType Directory | Out-Null
+            gh release download $snap --repo $env:GITHUB_REPOSITORY --pattern dxb.db --dir snapshot --clobber
             Move-Item -Force snapshot/dxb.db desktop/data/dxb.db
             $mb = [math]::Round((Get-Item desktop/data/dxb.db).Length / 1MB, 1)
             Write-Host "Snapshot size: $mb MB"
