@@ -89,6 +89,18 @@ def wait_for_port(port: int, timeout: float = 20.0) -> bool:
 def main() -> None:
     from dxb_desktop.db_engine import check_schema
 
+    # Windows consoles default to cp1252, and PyInstaller windowed apps have no
+    # usable console at all. Never let a unicode log line or a missing stream
+    # crash the app — especially at close time (a UnicodeEncodeError on '✓'
+    # after the window closes was a real bug in the sibling DubaiEstate app).
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None:
+            continue
+        try:
+            stream.reconfigure(errors="replace")
+        except (OSError, ValueError, AttributeError):  # pragma: no cover
+            pass
+
     db = db_path()
     try:
         check_schema(db)
@@ -136,10 +148,25 @@ def main() -> None:
         import webbrowser
 
         webbrowser.open(url)
+        # Keep serving while the browser tab is open; Ctrl-C to stop.
         try:
             thread.join()
         except KeyboardInterrupt:  # pragma: no cover
             pass
+        return
+    except Exception:  # noqa: BLE001 - a window/runtime error must never
+        # surface as an error dialog at close; log it and shut down cleanly.
+        log.warning("window closed with an error", exc_info=True)
+
+    # The window is closed: stop the embedded server so no background asyncio
+    # thread is still mid-loop when the process exits. Without this, a close
+    # can leave uvicorn logging against a torn-down event loop, which shows up
+    # as an error right after the window disappears.
+    try:
+        server.should_exit = True
+        thread.join(timeout=5.0)
+    except Exception:  # noqa: BLE001 - shutdown must never raise on exit
+        log.warning("server shutdown did not complete cleanly", exc_info=True)
 
 
 if __name__ == "__main__":
