@@ -20,6 +20,7 @@ import socket
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 logging.basicConfig(
@@ -28,6 +29,22 @@ logging.basicConfig(
 log = logging.getLogger("dxb_desktop.launcher")
 
 APP_TITLE = "Real Estate App New"
+
+
+def _fatal(exc: BaseException) -> None:
+    """Show the real startup error, then exit. A console=False PyInstaller app
+    has no console, so an unhandled traceback otherwise dies as a bare
+    "Failed to execute script" dialog with no clue what went wrong."""
+    msg = f"{type(exc).__name__}: {exc}\n\n{traceback.format_exc()}"
+    log.error(msg)
+    try:
+        if sys.platform == "win32":
+            import ctypes  # MessageBoxW — no tkinter/extra deps needed
+
+            ctypes.windll.user32.MessageBoxW(0, msg[-2000:], APP_TITLE, 0x10)
+    except Exception:  # noqa: BLE001 - last resort; never mask the exit
+        pass
+    sys.exit(1)
 
 
 def app_root() -> Path:
@@ -86,7 +103,7 @@ def wait_for_port(port: int, timeout: float = 20.0) -> bool:
     return False
 
 
-def main() -> None:
+def _run() -> None:
     from dxb_desktop.db_engine import check_schema
 
     # Windows consoles default to cp1252, and PyInstaller windowed apps have no
@@ -167,6 +184,15 @@ def main() -> None:
         thread.join(timeout=5.0)
     except Exception:  # noqa: BLE001 - shutdown must never raise on exit
         log.warning("server shutdown did not complete cleanly", exc_info=True)
+
+
+def main() -> None:
+    try:
+        _run()
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - show the real error, then exit
+        _fatal(exc)
 
 
 if __name__ == "__main__":

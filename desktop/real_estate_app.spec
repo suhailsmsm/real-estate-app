@@ -16,6 +16,8 @@ Output: dist/RealEstateAppNew/RealEstateAppNew.exe + _internal/ + data/.
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 SPEC_DIR = Path(SPECPATH).resolve()  # .../real estate/desktop
 REPO_ROOT = SPEC_DIR.parent           # .../real estate
 
@@ -23,6 +25,8 @@ datas = [
     # The built SPA (ui/dist) is served by the shell at "/".
     (str(REPO_ROOT / "ui" / "dist"), "ui"),
 ]
+# pywebview ships JS bridge assets that its platform backends need at runtime.
+datas += collect_data_files("webview", include_py_files=False)
 
 # The data snapshot is copied by CI/the build script AFTER PyInstaller runs
 # (it is too big to usefully bundle through Analysis datas, and on a dev
@@ -35,6 +39,13 @@ a = Analysis(
     binaries=[],
     datas=datas,
     hiddenimports=[
+        # pywebview + its Windows EdgeChromium backend. `import webview` is
+        # deferred inside launcher.main(), so static analysis misses it — and
+        # without the backend a packaged app cannot open its window at all.
+        "webview",
+        "webview.platforms.edgechromium",
+        "clr_loader",
+        "pythonnet",
         # The four services' modules are imported lazily inside functions
         # (shell.py imports dxb_api/dxb_mcp/dxb_copilot at call time), so
         # PyInstaller's static analysis misses them without these hints.
