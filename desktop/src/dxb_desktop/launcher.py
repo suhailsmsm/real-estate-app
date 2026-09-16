@@ -16,6 +16,7 @@ is too big for onefile's temp-extraction-per-launch), wrapped by Inno Setup.
 from __future__ import annotations
 
 import logging
+import os
 import socket
 import sys
 import threading
@@ -106,13 +107,21 @@ def wait_for_port(port: int, timeout: float = 20.0) -> bool:
 def _run() -> None:
     from dxb_desktop.db_engine import check_schema
 
+    # A console=False PyInstaller build has sys.stdout/stderr set to None.
+    # uvicorn's default logging config calls sys.stdout.isatty() when it
+    # applies its 'default' formatter, which raises
+    # AttributeError: 'NoneType' object has no attribute 'isatty' and kills
+    # startup before the window opens. Point them at devnull first.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
     # Windows consoles default to cp1252, and PyInstaller windowed apps have no
     # usable console at all. Never let a unicode log line or a missing stream
     # crash the app — especially at close time (a UnicodeEncodeError on '✓'
     # after the window closes was a real bug in the sibling DubaiEstate app).
     for stream in (sys.stdout, sys.stderr):
-        if stream is None:
-            continue
         try:
             stream.reconfigure(errors="replace")
         except (OSError, ValueError, AttributeError):  # pragma: no cover
